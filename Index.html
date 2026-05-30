@@ -1,0 +1,1230 @@
+
+html_content = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ADS-B Overhead Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a1f2e;
+            --bg-hover: #242b3d;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e293b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+        .app-container {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            height: 100vh;
+        }
+        @media (max-width: 900px) {
+            .app-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 45vh 55vh;
+            }
+        }
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        @media (max-width: 900px) {
+            .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+        }
+        .header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-card);
+        }
+        .header h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+        .header h1::before { content: "📡"; font-size: 1.3rem; }
+        .header p { font-size: 0.8rem; color: var(--text-secondary); }
+        
+        .setup-panel {
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+        }
+        .setup-panel.hidden { display: none; }
+        .setup-panel h3 {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+        .input-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .input-row input {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+        .input-row input::placeholder { color: var(--text-muted); }
+        .setup-panel button {
+            width: 100%;
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .setup-panel button:hover { background: #2563eb; }
+        .setup-panel .or-divider {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            margin: 8px 0;
+            position: relative;
+        }
+        .setup-panel .or-divider::before,
+        .setup-panel .or-divider::after {
+            content: "";
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: var(--border);
+        }
+        .setup-panel .or-divider::before { left: 0; }
+        .setup-panel .or-divider::after { right: 0; }
+        
+        .location-bar {
+            padding: 10px 16px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            flex-wrap: wrap;
+        }
+        .location-bar .coord { color: var(--accent); font-weight: 600; }
+        .location-bar button {
+            margin-left: auto;
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .location-bar button:hover { background: var(--border); color: var(--text-primary); }
+        
+        .stats-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1px;
+            background: var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+        .stat {
+            background: var(--bg-secondary);
+            padding: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        
+        .filters {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .filters label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .filters input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent);
+        }
+        .filters span {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-width: 50px;
+            text-align: right;
+        }
+        
+        .aircraft-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .aircraft-list::-webkit-scrollbar { width: 6px; }
+        .aircraft-list::-webkit-scrollbar-track { background: transparent; }
+        .aircraft-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        
+        .aircraft-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .aircraft-card:hover {
+            background: var(--bg-hover);
+            border-color: var(--accent);
+            transform: translateX(4px);
+        }
+        .aircraft-card.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
+        }
+        .aircraft-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--accent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .aircraft-card.active::before,
+        .aircraft-card:hover::before { opacity: 1; }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .callsign {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .distance-badge {
+            background: var(--bg-primary);
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            border: 1px solid var(--border);
+        }
+        .card-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .detail { display: flex; flex-direction: column; }
+        .detail-label {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 1px;
+        }
+        .detail-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        .detail-value.altitude { color: var(--success); }
+        .detail-value.speed { color: var(--warning); }
+        .detail-value.heading { color: #a78bfa; }
+        
+        .empty-state {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 12px;
+            opacity: 0.3;
+        }
+        
+        .status-bar {
+            padding: 8px 16px;
+            background: var(--bg-primary);
+            border-top: 1px solid var(--border);
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        .status-dot.error {
+            background: var(--danger);
+            animation: none;
+        }
+        .status-dot.warning {
+            background: var(--warning);
+            animation: none;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        
+        .map-container { position: relative; height: 100%; }
+        #map { height: 100%; width: 100%; background: #0a0e1a; }
+        
+        .map-overlay {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(17, 24, 39, 0.92);
+            backdrop-filter: blur(10px);
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            z-index: 1000;
+            max-width: 220px;
+        }
+        .map-overlay h3 {
+            font-size: 0.8rem;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .legend-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+        }
+        
+        .aircraft-marker { transition: all 0.5s ease; }
+        .aircraft-icon {
+            width: 22px;
+            height: 22px;
+            position: relative;
+        }
+        .aircraft-icon svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+        .aircraft-label {
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid var(--accent);
+            color: var(--text-primary);
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            white-space: nowrap;
+            position: absolute;
+            top: -26px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .aircraft-marker:hover .aircraft-label { opacity: 1; }
+        
+        .user-location { z-index: 1000 !important; }
+        .user-location .pulse {
+            width: 18px;
+            height: 18px;
+            background: var(--accent);
+            border-radius: 50%;
+            position: relative;
+        }
+        .user-location .pulse::after {
+            content: "";
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            right: -8px;
+            bottom: -8px;
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            animation: radar-pulse 2s infinite;
+        }
+        @keyframes radar-pulse {
+            0% { transform: scale(0.5); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 14, 26, 0.92);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            transition: opacity 0.3s;
+        }
+        .loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            z-index: 3000;
+            transition: transform 0.3s ease;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            max-width: 90vw;
+            text-align: center;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.error { border-color: var(--danger); }
+        .toast.success { border-color: var(--success); }
+        
+        .api-test-btn {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            z-index: 1000;
+            background: rgba(17, 24, 39, 0.92);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .api-test-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+        .proxy-selector {
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .proxy-selector label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .proxy-selector select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            cursor: pointer;
+        }
+        .proxy-selector select:focus { outline: none; border-color: var(--accent); }
+        .proxy-selector .proxy-status {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="header">
+                <h1>ADS-B Overhead Tracker</h1>
+                <p>Real-time aircraft via OpenSky + CORS Proxy</p>
+            </div>
+            
+            <div class="setup-panel" id="setup-panel">
+                <h3>📍 Set Your Location</h3>
+                <div class="input-row">
+                    <input type="text" id="manual-lat" placeholder="Latitude (e.g. 51.5074)" value="51.5074">
+                    <input type="text" id="manual-lon" placeholder="Longitude (e.g. -0.1278)" value="-0.1278">
+                </div>
+                <button onclick="setManualLocation()">Use This Location</button>
+                <div class="or-divider">or</div>
+                <button onclick="tryGeolocation()" style="background: var(--bg-hover); border: 1px solid var(--border); color: var(--text-secondary);">
+                    📲 Try Auto-Detect (GPS)
+                </button>
+                <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 8px; text-align: center;">
+                    GPS often blocked on file:// URLs. Use manual coordinates for best results.
+                </p>
+            </div>
+            
+            <div class="location-bar" id="location-bar" style="display: none;">
+                <span>📍</span>
+                <span>Lat: <span class="coord" id="lat">--</span></span>
+                <span>Lon: <span class="coord" id="lon">--</span></span>
+                <button onclick="showSetup()">Change</button>
+            </div>
+            
+            <div class="proxy-selector" id="proxy-selector" style="display: none;">
+                <label>Proxy:</label>
+                <select id="proxy-select" onchange="changeProxy(this.value)">
+                    <option value="corsproxy">corsproxy.io (Free)</option>
+                    <option value="corsfix">corsfix.com (Free)</option>
+                    <option value="corslol">cors.lol (Free)</option>
+                    <option value="allorigins">allorigins (Free)</option>
+                    <option value="direct">Direct (No Proxy)</option>
+                </select>
+                <span class="proxy-status" id="proxy-status">Ready</span>
+            </div>
+            
+            <div class="stats-bar" id="stats-bar" style="display: none;">
+                <div class="stat">
+                    <div class="stat-value" id="total-aircraft">0</div>
+                    <div class="stat-label">In Range</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value" id="overhead-count">0</div>
+                    <div class="stat-label">Overhead</div>
+                </div>
+            </div>
+            
+            <div class="filters" id="filters" style="display: none;">
+                <label>Range</label>
+                <input type="range" id="range-slider" min="10" max="200" value="50" oninput="updateRange(this.value)">
+                <span id="range-value">50 km</span>
+            </div>
+            
+            <div class="aircraft-list" id="aircraft-list">
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                    </svg>
+                    <p>Waiting for location...</p>
+                    <p style="font-size: 0.75rem; margin-top: 6px;">Enter coordinates above to start tracking</p>
+                </div>
+            </div>
+            
+            <div class="status-bar">
+                <div class="status-indicator">
+                    <div class="status-dot warning" id="status-dot"></div>
+                    <span id="status-text">Waiting for location</span>
+                </div>
+                <span id="last-update">--:--:--</span>
+            </div>
+        </div>
+        
+        <div class="map-container">
+            <div id="map"></div>
+            
+            <div class="map-overlay" id="map-overlay" style="display: none;">
+                <h3>Legend</h3>
+                <div class="legend-item">
+                    <div class="legend-icon">✈️</div>
+                    <span>Commercial Aircraft</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon">🚁</div>
+                    <span>Low Altitude</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-icon" style="color: var(--accent)">●</div>
+                    <span>Your Location</span>
+                </div>
+            </div>
+            
+            <button class="api-test-btn" onclick="testAPI()" id="api-test-btn" style="display: none;">
+                🔍 Test API
+            </button>
+            
+            <div class="loading-overlay" id="loading">
+                <div class="spinner"></div>
+                <p style="color: var(--text-secondary); font-size: 0.9rem;">Waiting for location...</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast" id="toast"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ============ CORS PROXY CONFIGURATION ============
+        const PROXIES = {
+            corsproxy: {
+                name: 'corsproxy.io',
+                url: 'https://corsproxy.io/?url=',
+                encode: true
+            },
+            corsfix: {
+                name: 'corsfix.com',
+                url: 'https://proxy.corsfix.com/?',
+                encode: false
+            },
+            corslol: {
+                name: 'cors.lol',
+                url: 'https://api.cors.lol/?url=',
+                encode: true
+            },
+            allorigins: {
+                name: 'allorigins',
+                url: 'https://api.allorigins.win/raw?url=',
+                encode: true
+            },
+            direct: {
+                name: 'Direct',
+                url: '',
+                encode: false
+            }
+        };
+
+        // ============ CONFIGURATION ============
+        const CONFIG = {
+            refreshInterval: 15000,
+            defaultLat: 51.5074,
+            defaultLon: -0.1278,
+            defaultRange: 50,
+            apiTimeout: 15000,
+            defaultProxy: 'corsproxy'
+        };
+
+        // ============ STATE ============
+        let state = {
+            lat: null,
+            lon: null,
+            range: CONFIG.defaultRange,
+            aircraft: [],
+            markers: {},
+            selectedAircraft: null,
+            map: null,
+            userMarker: null,
+            rangeCircle: null,
+            lastUpdate: null,
+            updateTimer: null,
+            isSetup: false,
+            currentProxy: CONFIG.defaultProxy,
+            proxyWorking: null
+        };
+
+        // ============ UTILITY FUNCTIONS ============
+        function toRad(deg) { return deg * Math.PI / 180; }
+        
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = toRad(lat2 - lat1);
+            const dLon = toRad(lon2 - lon1);
+            const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+            return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function formatAltitude(alt) {
+            if (alt === null || alt === undefined) return 'Unknown';
+            return Math.round(alt) + ' ft';
+        }
+
+        function formatSpeed(spd) {
+            if (spd === null || spd === undefined) return 'Unknown';
+            return Math.round(spd) + ' kt';
+        }
+
+        function formatHeading(hdg) {
+            if (hdg === null || hdg === undefined) return 'Unknown';
+            const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+            return Math.round(hdg) + '° ' + dirs[Math.round(hdg / 22.5) % 16];
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 4000);
+        }
+
+        // ============ PROXY FUNCTIONS ============
+        function getProxyUrl(targetUrl) {
+            const proxy = PROXIES[state.currentProxy];
+            if (!proxy || state.currentProxy === 'direct') return targetUrl;
+            if (proxy.encode) {
+                return proxy.url + encodeURIComponent(targetUrl);
+            }
+            return proxy.url + targetUrl;
+        }
+
+        function changeProxy(proxyName) {
+            state.currentProxy = proxyName;
+            const proxy = PROXIES[proxyName];
+            document.getElementById('proxy-status').textContent = proxy ? proxy.name : 'Unknown';
+            showToast('Switched to ' + (proxy ? proxy.name : 'unknown') + ' proxy');
+            if (state.isSetup) {
+                update();
+            }
+        }
+
+        // ============ MAP INITIALIZATION ============
+        function initMap() {
+            state.map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false
+            }).setView([CONFIG.defaultLat, CONFIG.defaultLon], 8);
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO',
+                subdomains: 'abcd',
+                maxZoom: 19
+            }).addTo(state.map);
+
+            L.control.zoom({ position: 'bottomright' }).addTo(state.map);
+        }
+
+        // ============ LOCATION SETUP ============
+        function setManualLocation() {
+            const lat = parseFloat(document.getElementById('manual-lat').value);
+            const lon = parseFloat(document.getElementById('manual-lon').value);
+            
+            if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                showToast('Invalid coordinates. Use decimal format (e.g. 51.5074, -0.1278)', 'error');
+                return;
+            }
+            
+            state.lat = lat;
+            state.lon = lon;
+            finishSetup();
+        }
+
+        function tryGeolocation() {
+            if (!navigator.geolocation) {
+                showToast('Geolocation not supported on this device', 'error');
+                return;
+            }
+            
+            showToast('Requesting GPS location...');
+            
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    state.lat = pos.coords.latitude;
+                    state.lon = pos.coords.longitude;
+                    showToast('GPS location acquired!', 'success');
+                    finishSetup();
+                },
+                (err) => {
+                    console.warn('Geolocation error:', err);
+                    let msg = 'GPS failed: ';
+                    switch(err.code) {
+                        case 1: msg += 'Permission denied. Use manual coordinates.'; break;
+                        case 2: msg += 'Position unavailable.'; break;
+                        case 3: msg += 'Timeout.'; break;
+                        default: msg += 'Unknown error.';
+                    }
+                    showToast(msg, 'error');
+                },
+                { timeout: 15000, enableHighAccuracy: true, maximumAge: 60000 }
+            );
+        }
+
+        function finishSetup() {
+            state.isSetup = true;
+            
+            document.getElementById('setup-panel').classList.add('hidden');
+            document.getElementById('location-bar').style.display = 'flex';
+            document.getElementById('proxy-selector').style.display = 'flex';
+            document.getElementById('stats-bar').style.display = 'grid';
+            document.getElementById('filters').style.display = 'flex';
+            document.getElementById('map-overlay').style.display = 'block';
+            document.getElementById('api-test-btn').style.display = 'block';
+            document.getElementById('loading').classList.add('hidden');
+            
+            document.getElementById('lat').textContent = state.lat.toFixed(4);
+            document.getElementById('lon').textContent = state.lon.toFixed(4);
+            
+            state.map.setView([state.lat, state.lon], 10);
+            
+            if (!state.userMarker) {
+                state.userMarker = L.marker([state.lat, state.lon], {
+                    icon: L.divIcon({
+                        className: 'user-location',
+                        html: '<div class="pulse"></div>',
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10]
+                    }),
+                    zIndexOffset: 1000
+                }).addTo(state.map);
+                
+                state.rangeCircle = L.circle([state.lat, state.lon], {
+                    radius: state.range * 1000,
+                    color: '#3b82f6',
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.05,
+                    weight: 1,
+                    dashArray: '5, 10'
+                }).addTo(state.map);
+            } else {
+                state.userMarker.setLatLng([state.lat, state.lon]);
+                state.rangeCircle.setLatLng([state.lat, state.lon]);
+            }
+            
+            showToast('Location set! Testing proxy...', 'success');
+            
+            // Auto-test proxy before starting
+            autoTestProxy().then(working => {
+                if (working) {
+                    update();
+                    state.updateTimer = setInterval(update, CONFIG.refreshInterval);
+                } else {
+                    showToast('Proxy test failed. Try switching proxies.', 'error');
+                }
+            });
+        }
+
+        function showSetup() {
+            if (state.updateTimer) {
+                clearInterval(state.updateTimer);
+                state.updateTimer = null;
+            }
+            
+            document.getElementById('setup-panel').classList.remove('hidden');
+            document.getElementById('location-bar').style.display = 'none';
+            document.getElementById('proxy-selector').style.display = 'none';
+            document.getElementById('stats-bar').style.display = 'none';
+            document.getElementById('filters').style.display = 'none';
+            document.getElementById('map-overlay').style.display = 'none';
+            document.getElementById('api-test-btn').style.display = 'none';
+            
+            if (state.lat) document.getElementById('manual-lat').value = state.lat;
+            if (state.lon) document.getElementById('manual-lon').value = state.lon;
+        }
+
+        // ============ API FUNCTIONS WITH PROXY ============
+        async function fetchWithTimeout(url, timeout = CONFIG.apiTimeout) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            
+            try {
+                const response = await fetch(url, { signal: controller.signal });
+                clearTimeout(id);
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                throw error;
+            }
+        }
+
+        async function fetchAircraftData() {
+            const latDelta = state.range / 111;
+            const lonDelta = state.range / (111 * Math.cos(toRad(state.lat)));
+            
+            const lamin = state.lat - latDelta;
+            const lomin = state.lon - lonDelta;
+            const lamax = state.lat + latDelta;
+            const lomax = state.lon + lonDelta;
+
+            const targetUrl = `https://opensky-network.org/api/states/all?lamin=${lamin.toFixed(4)}&lomin=${lomin.toFixed(4)}&lamax=${lamax.toFixed(4)}&lomax=${lomax.toFixed(4)}`;
+            const proxyUrl = getProxyUrl(targetUrl);
+
+            const response = await fetchWithTimeout(proxyUrl);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            return data.states || [];
+        }
+
+        async function autoTestProxy() {
+            const testUrl = getProxyUrl('https://opensky-network.org/api/states/all?lamin=51.0&lomin=-0.5&lamax=52.0&lomax=0.5');
+            
+            updateStatus('warning', 'Testing proxy...');
+            
+            try {
+                const response = await fetchWithTimeout(testUrl, 8000);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                const count = data.states ? data.states.length : 0;
+                
+                state.proxyWorking = true;
+                showToast(`✅ ${PROXIES[state.currentProxy].name} working! Found ${count} test aircraft.`, 'success');
+                updateStatus(true, 'Proxy OK');
+                return true;
+                
+            } catch (error) {
+                console.error('Proxy test failed:', error);
+                state.proxyWorking = false;
+                updateStatus(false, 'Proxy failed');
+                
+                // Try next proxy automatically
+                const proxies = Object.keys(PROXIES);
+                const currentIdx = proxies.indexOf(state.currentProxy);
+                
+                if (currentIdx < proxies.length - 2) { // -2 to skip 'direct' at end
+                    const nextProxy = proxies[currentIdx + 1];
+                    showToast(`${PROXIES[state.currentProxy].name} failed. Trying ${PROXIES[nextProxy].name}...`, 'warning');
+                    document.getElementById('proxy-select').value = nextProxy;
+                    changeProxy(nextProxy);
+                    return autoTestProxy(); // Recursive retry
+                }
+                
+                return false;
+            }
+        }
+
+        async function testAPI() {
+            showToast('Testing current proxy + API...');
+            updateStatus('warning', 'Testing...');
+            
+            const working = await autoTestProxy();
+            
+            if (working && state.isSetup) {
+                update();
+            }
+        }
+
+        // ============ DATA PROCESSING ============
+        function processAircraftData(states) {
+            if (!states || states.length === 0) return [];
+            
+            return states.map(stateVec => {
+                const [
+                    icao24, callsign, origin_country, time_position, last_contact,
+                    longitude, latitude, baro_altitude, on_ground, velocity,
+                    true_track, vertical_rate, sensors, geo_altitude, squawk,
+                    spi, position_source
+                ] = stateVec;
+
+                if (latitude === null || longitude === null) return null;
+
+                const distance = haversine(state.lat, state.lon, latitude, longitude);
+                
+                return {
+                    icao24: icao24?.toUpperCase() || 'UNKNOWN',
+                    callsign: callsign?.trim() || 'UNKNOWN',
+                    country: origin_country || 'Unknown',
+                    latitude,
+                    longitude,
+                    altitude: baro_altitude !== null ? baro_altitude * 3.28084 : null,
+                    geoAltitude: geo_altitude !== null ? geo_altitude * 3.28084 : null,
+                    speed: velocity !== null ? velocity * 1.94384 : null,
+                    heading: true_track,
+                    verticalRate: vertical_rate !== null ? vertical_rate * 196.85 : null,
+                    squawk: squawk || null,
+                    onGround: on_ground,
+                    distance,
+                    lastContact: last_contact,
+                    category: getCategory(baro_altitude, velocity, on_ground)
+                };
+            }).filter(ac => ac !== null && ac.distance <= state.range)
+              .sort((a, b) => a.distance - b.distance);
+        }
+
+        function getCategory(altitude, velocity, onGround) {
+            if (onGround) return 'ground';
+            if (!altitude) return 'unknown';
+            if (altitude < 500) return 'ground';
+            if (altitude < 1500) return 'low';
+            if (altitude < 10000) return 'low';
+            return 'cruise';
+        }
+
+        // ============ UI UPDATES ============
+        function updateStats(aircraft) {
+            document.getElementById('total-aircraft').textContent = aircraft.length;
+            document.getElementById('overhead-count').textContent = 
+                aircraft.filter(ac => ac.distance < 20).length;
+        }
+
+        function updateAircraftList(aircraft) {
+            const list = document.getElementById('aircraft-list');
+            
+            if (aircraft.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+                        </svg>
+                        <p>No aircraft within ${state.range} km</p>
+                        <p style="font-size: 0.75rem; margin-top: 6px;">Try increasing range or check API status</p>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = aircraft.map(ac => `
+                <div class="aircraft-card ${state.selectedAircraft === ac.icao24 ? 'active' : ''}" 
+                     onclick="selectAircraft('${ac.icao24}')"
+                     data-icao="${ac.icao24}">
+                    <div class="card-header">
+                        <div class="callsign">${ac.callsign}</div>
+                        <div class="distance-badge">${ac.distance.toFixed(1)} km</div>
+                    </div>
+                    <div class="card-details">
+                        <div class="detail">
+                            <div class="detail-label">Altitude</div>
+                            <div class="detail-value altitude">${formatAltitude(ac.altitude)}</div>
+                        </div>
+                        <div class="detail">
+                            <div class="detail-label">Speed</div>
+                            <div class="detail-value speed">${formatSpeed(ac.speed)}</div>
+                        </div>
+                        <div class="detail">
+                            <div class="detail-label">Heading</div>
+                            <div class="detail-value heading">${formatHeading(ac.heading)}</div>
+                        </div>
+                        <div class="detail">
+                            <div class="detail-label">Squawk</div>
+                            <div class="detail-value">${ac.squawk || '----'}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getAircraftIcon(heading, altitude, isSelected) {
+            const color = isSelected ? '#3b82f6' : (altitude > 10000 ? '#10b981' : '#f59e0b');
+            const rotation = heading || 0;
+            
+            return L.divIcon({
+                className: 'aircraft-marker',
+                html: `
+                    <div class="aircraft-icon">
+                        <svg viewBox="0 0 24 24" style="transform: rotate(${rotation}deg);">
+                            <path d="M12 2L8.5 8.5L2 10L8.5 12L12 22L15.5 12L22 10L15.5 8.5L12 2Z" 
+                                  fill="${color}" stroke="white" stroke-width="1"/>
+                        </svg>
+                        <div class="aircraft-label">${altitude ? Math.round(altitude/1000)+'k' : '?'}</div>
+                    </div>
+                `,
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+        }
+
+        function updateMap(aircraft) {
+            if (!state.userMarker) return;
+
+            state.rangeCircle.setRadius(state.range * 1000);
+
+            const currentIcao = new Set(aircraft.map(ac => ac.icao24));
+            
+            Object.keys(state.markers).forEach(icao => {
+                if (!currentIcao.has(icao)) {
+                    state.map.removeLayer(state.markers[icao]);
+                    delete state.markers[icao];
+                }
+            });
+
+            aircraft.forEach(ac => {
+                const isSelected = state.selectedAircraft === ac.icao24;
+                const icon = getAircraftIcon(ac.heading, ac.altitude, isSelected);
+                
+                if (state.markers[ac.icao24]) {
+                    const marker = state.markers[ac.icao24];
+                    marker.setLatLng([ac.latitude, ac.longitude]);
+                    marker.setIcon(icon);
+                    marker.setZIndexOffset(isSelected ? 500 : 100);
+                } else {
+                    const marker = L.marker([ac.latitude, ac.longitude], {
+                        icon: icon,
+                        zIndexOffset: isSelected ? 500 : 100
+                    }).addTo(state.map);
+                    
+                    marker.on('click', () => selectAircraft(ac.icao24));
+                    state.markers[ac.icao24] = marker;
+                }
+            });
+        }
+
+        function selectAircraft(icao24) {
+            state.selectedAircraft = state.selectedAircraft === icao24 ? null : icao24;
+            
+            document.querySelectorAll('.aircraft-card').forEach(card => {
+                card.classList.toggle('active', card.dataset.icao === icao24);
+            });
+            
+            Object.entries(state.markers).forEach(([icao, marker]) => {
+                const ac = state.aircraft.find(a => a.icao24 === icao);
+                if (ac) {
+                    marker.setIcon(getAircraftIcon(ac.heading, ac.altitude, icao === icao24));
+                    marker.setZIndexOffset(icao === icao24 ? 500 : 100);
+                }
+            });
+            
+            if (state.selectedAircraft) {
+                const ac = state.aircraft.find(a => a.icao24 === icao24);
+                if (ac) state.map.panTo([ac.latitude, ac.longitude]);
+            }
+        }
+
+        function updateStatus(connected, message) {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            
+            dot.className = 'status-dot';
+            if (connected === true) dot.style.background = 'var(--success)';
+            else if (connected === false) dot.classList.add('error');
+            else dot.classList.add('warning');
+            
+            text.textContent = message || 'Ready';
+            
+            const now = new Date();
+            document.getElementById('last-update').textContent = now.toLocaleTimeString();
+        }
+
+        function updateRange(value) {
+            state.range = parseInt(value);
+            document.getElementById('range-value').textContent = state.range + ' km';
+            if (state.rangeCircle) {
+                state.rangeCircle.setRadius(state.range * 1000);
+            }
+            if (state.isSetup) update();
+        }
+
+        // ============ MAIN UPDATE ============
+        async function update() {
+            if (!state.isSetup || !state.lat || !state.lon) return;
+            
+            updateStatus('warning', 'Fetching...');
+            
+            try {
+                const states = await fetchAircraftData();
+                state.aircraft = processAircraftData(states);
+                
+                updateStats(state.aircraft);
+                updateAircraftList(state.aircraft);
+                updateMap(state.aircraft);
+                updateStatus(true, `${state.aircraft.length} aircraft tracked`);
+                
+            } catch (error) {
+                console.error('Update failed:', error);
+                let msg = 'Fetch failed: ';
+                if (error.name === 'AbortError') msg += 'Request timed out';
+                else if (error.message.includes('Failed to fetch')) msg += 'CORS/Network error — try another proxy';
+                else msg += error.message;
+                
+                updateStatus(false, msg);
+                showToast(msg + ' — Will retry', 'error');
+            }
+        }
+
+        // ============ INITIALIZATION ============
+        function init() {
+            initMap();
+            document.getElementById('loading').classList.add('hidden');
+            
+            // Try to pre-fill GPS silently
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        document.getElementById('manual-lat').value = pos.coords.latitude.toFixed(4);
+                        document.getElementById('manual-lon').value = pos.coords.longitude.toFixed(4);
+                        showToast('GPS found your location! Tap "Use This Location" to start.', 'success');
+                    },
+                    () => {},
+                    { timeout: 5000 }
+                );
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>'''
+
+with open('/mnt/agents/output/adsb-tracker-cors-fixed.html', 'w', encoding='utf-8') as f:
+    f.write(html_content)
+
+print("✅ CORS-fixed version saved!")
+print(f"Size: {len(html_content):,} characters")
+
+
